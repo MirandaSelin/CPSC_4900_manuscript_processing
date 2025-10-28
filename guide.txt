@@ -1,0 +1,3 @@
+source ~/venvs/kraken-env/bin/activate
+kraken -a -i gospels.tiff segmentation.xml segment -bl
+python alto_overlay.py --alto segmentation.xml --image gospels.png --level line --out overlay.png
