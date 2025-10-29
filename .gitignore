@@ -1,5 +1,10 @@
 kraken-env/
-venv/
+.venv/
 __pycache__/
 *.pyc
 *.dylib
+
+# Pipeline output directories (large generated files)
+examples/*/components/
+examples/*/embeddings_output/
+examples/*/visualizations/
