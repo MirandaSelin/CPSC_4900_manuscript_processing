@@ -128,6 +128,7 @@ class GlyphSimilaritySearch:
             source_images_dir: Directory containing source TIFF/image files
         """
         source_images_dir = Path(source_images_dir)
+        output_path = Path(output_path)
         
         # Collect data for each glyph
         results_data = []
@@ -144,24 +145,36 @@ class GlyphSimilaritySearch:
             # Generate context image (glyph highlighted in source)
             context_b64 = self._generate_context_image(glyph_meta, source_images_dir)
             
+            # Generate full page image for separate viewing
+            full_page_filename = f"fullpage_{glyph_id}.html"
+            full_page_b64 = self._generate_full_page_image(glyph_meta, source_images_dir)
+            
             results_data.append({
                 'glyph_id': glyph_id,
                 'similarity': f"{similarity_score:.4f}",
                 'source_page': glyph_meta['source_page'],
                 'line_index': glyph_meta['line_index'],
                 'position_in_line': glyph_meta['position_in_line'],
-                'coordinates': f"({int(glyph_meta['x_global'])}, {int(glyph_meta['y_global'])})",
-                'size': f"{int(glyph_meta['width'])}×{int(glyph_meta['height'])}",
                 'glyph_img': glyph_b64,
-                'context_img': context_b64
+                'context_img': context_b64,
+                'full_page_img': full_page_b64,
+                'full_page_file': full_page_filename
             })
         
-        # Generate HTML
+        # Generate main HTML report
         html = self._create_html_template(results_data, glyph_ids[0])
         
-        # Save to file
+        # Save main report to file
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(html)
+        
+        # Generate individual full page HTML files
+        for result in results_data:
+            if result['full_page_img']:
+                full_page_html = self._create_full_page_html(result)
+                full_page_path = output_path.parent / result['full_page_file']
+                with open(full_page_path, 'w', encoding='utf-8') as f:
+                    f.write(full_page_html)
     
     def _image_to_base64(self, image_path):
         """Convert image file to base64 string for embedding in HTML."""
@@ -243,6 +256,144 @@ class GlyphSimilaritySearch:
         _, buffer = cv2.imencode('.png', context_region)
         return base64.b64encode(buffer).decode('utf-8')
     
+    def _generate_full_page_image(self, glyph_meta, source_images_dir):
+        """
+        Generate a full page image showing the glyph highlighted in the complete manuscript page.
+        
+        Args:
+            glyph_meta: Row from metadata DataFrame
+            source_images_dir: Directory containing source images
+            
+        Returns:
+            Base64 encoded image string of full page with highlighted glyph
+        """
+        # Find source image
+        source_filename = glyph_meta['source_image']
+        source_path = source_images_dir / source_filename
+        
+        # Try different extensions if not found
+        if not source_path.exists():
+            for ext in ['.tiff', '.tif', '.png', '.jpg']:
+                alt_path = source_images_dir / (Path(source_filename).stem + ext)
+                if alt_path.exists():
+                    source_path = alt_path
+                    break
+        
+        if not source_path.exists():
+            return None
+        
+        # Load source image
+        source_img = cv2.imread(str(source_path))
+        if source_img is None:
+            return None
+        
+        # Extract glyph coordinates
+        x = int(glyph_meta['x_global'])
+        y = int(glyph_meta['y_global'])
+        w = int(glyph_meta['width'])
+        h = int(glyph_meta['height'])
+        
+        # Draw rectangle around glyph on full page
+        full_page = source_img.copy()
+        cv2.rectangle(full_page, (x, y), (x + w, y + h), (0, 0, 255), 5)
+        
+        # Resize if too large for web display (max 1200px wide)
+        max_width = 1200
+        if full_page.shape[1] > max_width:
+            scale = max_width / full_page.shape[1]
+            new_width = max_width
+            new_height = int(full_page.shape[0] * scale)
+            full_page = cv2.resize(full_page, (new_width, new_height))
+        
+        # Convert to base64
+        _, buffer = cv2.imencode('.png', full_page)
+        return base64.b64encode(buffer).decode('utf-8')
+    
+    def _create_full_page_html(self, result):
+        """Create a standalone HTML page showing the full manuscript page with highlighted glyph."""
+        
+        if not result['full_page_img']:
+            return f'''<!DOCTYPE html>
+<html><body><p>Full page image not available for {result['glyph_id']}</p></body></html>'''
+        
+        html = f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Full Page - {result['glyph_id']}</title>
+    <style>
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+        
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #1a1a1a;
+            color: white;
+            padding: 20px;
+        }}
+        
+        .header {{
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            backdrop-filter: blur(10px);
+        }}
+        
+        h1 {{
+            margin-bottom: 10px;
+            font-size: 24px;
+        }}
+        
+        .info {{
+            color: #ccc;
+            font-size: 14px;
+        }}
+        
+        .image-container {{
+            text-align: center;
+            background: #2a2a2a;
+            padding: 20px;
+            border-radius: 10px;
+            overflow: auto;
+        }}
+        
+        .full-page-img {{
+            max-width: 100%;
+            height: auto;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border-radius: 5px;
+        }}
+        
+        .caption {{
+            margin-top: 15px;
+            color: #aaa;
+            font-style: italic;
+        }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📄 Full Manuscript Page - {result['glyph_id']}</h1>
+        <p class="info">
+            <strong>Source:</strong> {result['source_page']} | 
+            <strong>Position:</strong> Line {result['line_index']}, Glyph {result['position_in_line']}
+        </p>
+    </div>
+    
+    <div class="image-container">
+        <img class="full-page-img" src="data:image/png;base64,{result['full_page_img']}" alt="Full page">
+        <p class="caption">🔴 Red box highlights the glyph location on the manuscript page</p>
+    </div>
+</body>
+</html>'''
+        
+        return html
+    
     def _create_html_template(self, results_data, query_glyph_id):
         """Create the HTML template with embedded images and interactivity."""
         
@@ -260,6 +411,11 @@ class GlyphSimilaritySearch:
             
             glyph_img_html = f'<img src="data:image/png;base64,{result["glyph_img"]}" alt="{result["glyph_id"]}">' if result['glyph_img'] else '<p>No image</p>'
             
+            # Add View Full Page button if full page image is available
+            full_page_button = ""
+            if result['full_page_img']:
+                full_page_button = f'<button class="full-page-btn" onclick="window.open(\'{result["full_page_file"]}\', \'_blank\')">📄 View Full Page</button>'
+            
             cards_html += f'''
             <div class="{card_class}">
                 <div class="rank">#{i}</div>
@@ -272,9 +428,10 @@ class GlyphSimilaritySearch:
                         <p><strong>Similarity:</strong> {result['similarity']}</p>
                         <p><strong>Source:</strong> {result['source_page']}</p>
                         <p><strong>Position:</strong> Line {result['line_index']}, Glyph {result['position_in_line']}</p>
-                        <p><strong>Coordinates:</strong> {result['coordinates']}</p>
-                        <p><strong>Size:</strong> {result['size']}</p>
-                        <button class="toggle-context-btn" onclick="toggleContext(this)">Show Context</button>
+                        <div class="button-group">
+                            <button class="toggle-context-btn" onclick="toggleContext(this)">Show Context</button>
+                            {full_page_button}
+                        </div>
                     </div>
                 </div>
                 <div class="context-view" style="display: none;">
@@ -410,7 +567,13 @@ class GlyphSimilaritySearch:
             color: #333;
         }}
         
-        .toggle-context-btn {{
+        .button-group {{
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }}
+        
+        .toggle-context-btn, .full-page-btn {{
             background: #667eea;
             color: white;
             border: none;
@@ -420,16 +583,23 @@ class GlyphSimilaritySearch:
             font-size: 14px;
             font-weight: 600;
             transition: background 0.2s;
-            margin-top: 10px;
             width: fit-content;
         }}
         
-        .toggle-context-btn:hover {{
+        .toggle-context-btn:hover, .full-page-btn:hover {{
             background: #764ba2;
         }}
         
         .toggle-context-btn.active {{
             background: #764ba2;
+        }}
+        
+        .full-page-btn {{
+            background: #48bb78;
+        }}
+        
+        .full-page-btn:hover {{
+            background: #38a169;
         }}
         
         .context-view {{
@@ -475,7 +645,7 @@ class GlyphSimilaritySearch:
     <div class="container">
         <header>
             <h1>🔍 Glyph Similarity Search Results</h1>
-            <p class="subtitle">Query: <strong>{query_glyph_id}</strong> | Found {len(results_data)} similar glyphs (including query)</p>
+            <p class="subtitle">Query: <strong>{query_glyph_id}</strong> | Displaying top {len(results_data)} similar glyphs (including query)</p>
         </header>
         
         <div class="results">
