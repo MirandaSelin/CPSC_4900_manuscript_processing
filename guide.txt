@@ -1,9 +1,12 @@
 From within pipeline, examples using gospel_config.ini:
 
+# Download from iiif
+/Users/miranda/Documents/Yale/Classes/CPSC_490/.venv/bin/python iiif_downloader.py ms402_config.ini
+
 # Segmentation (uses kraken-env)
-source /Users/miranda/Documents/Yale/Classes/CPSC_490/kraken-env/bin/activate && python manuscript_segmentation.py gospel_config.ini
+source /Users/miranda/Documents/Yale/Classes/CPSC_490/kraken-env/bin/activate && python manuscript_segmentation.py ms402_config.ini
 
 # Other three (use main .venv)
-/Users/miranda/Documents/Yale/Classes/CPSC_490/.venv/bin/python glyph_extraction.py gospel_config.ini
-/Users/miranda/Documents/Yale/Classes/CPSC_490/.venv/bin/python glyph_embedder.py gospel_config.ini
-/Users/miranda/Documents/Yale/Classes/CPSC_490/.venv/bin/python glyph_similarity_search.py gospel_config.ini
+/Users/miranda/Documents/Yale/Classes/CPSC_490/.venv/bin/python glyph_extraction.py ms402_config.ini
+/Users/miranda/Documents/Yale/Classes/CPSC_490/.venv/bin/python glyph_embedder.py ms402_config.ini
+/Users/miranda/Documents/Yale/Classes/CPSC_490/.venv/bin/python glyph_similarity_search.py ms402_config.ini

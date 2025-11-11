@@ -6,16 +6,19 @@ This script runs Kraken OCR segmentation on manuscript images to detect text lin
 It wraps the Kraken command-line tool and uses configuration from an INI file.
 
 Usage:
-    python manuscript_segmentation.py gospel_config.ini
+    python manuscript_segmentation.py my_config.ini
     
 Requirements:
     - Kraken must be installed in your environment
     - Run this with the kraken-env virtual environment activated
+    - cache_dir must be specified in config with TIFF images
     
 The script will:
-    1. Read paths from the config file
-    2. Run: kraken -a -i input.tiff output.xml segment -bl
-    3. Generate ALTO XML format segmentation with baseline detection
+    1. Read cache_dir from the config file
+    2. Find all TIFF images in cache_dir
+    3. Run Kraken on each: kraken -a -i input.tiff output.xml segment -bl
+    4. Save XML files to cache_dir/segmentation/
+    5. Generate ALTO XML format segmentation with baseline detection
 """
 
 import argparse
@@ -68,11 +71,9 @@ def run_segmentation(tiff_path: Path, xml_output_path: Path) -> bool:
         '-bl'  # Detect baselines (text lines)
     ]
     
-    print(f"\nRunning Kraken segmentation...")
-    print(f"Command: {' '.join(cmd)}")
-    print(f"Input:  {tiff_path}")
-    print(f"Output: {xml_output_path}")
-    print("\nThis may take a minute...\n")
+    print(f"Running Kraken segmentation...")
+    print(f"  Input:  {tiff_path.name}")
+    print(f"  Output: {xml_output_path.name}")
     
     # Run the command
     try:
@@ -83,27 +84,36 @@ def run_segmentation(tiff_path: Path, xml_output_path: Path) -> bool:
             text=True
         )
         
-        # Print Kraken's output
-        if result.stdout:
+        # Print Kraken's output (if any)
+        if result.stdout and result.stdout.strip():
             print(result.stdout)
-        
-        if result.stderr:
-            print(result.stderr)
         
         return True
         
     except subprocess.CalledProcessError as e:
-        print(f"\n❌ Error running Kraken segmentation:")
-        print(f"Return code: {e.returncode}")
-        if e.stdout:
-            print(f"STDOUT: {e.stdout}")
+        print(f"  ❌ Error running Kraken segmentation:")
+        print(f"  Return code: {e.returncode}")
         if e.stderr:
-            print(f"STDERR: {e.stderr}")
+            print(f"  STDERR: {e.stderr}")
         return False
     
     except Exception as e:
-        print(f"\n❌ Unexpected error: {e}")
+        print(f"  ❌ Unexpected error: {e}")
         return False
+
+
+def find_all_downloaded_images(cache_dir: Path) -> list[Path]:
+    """
+    Find all TIFF images in the cache directory.
+    
+    Args:
+        cache_dir: Directory containing downloaded IIIF images
+        
+    Returns:
+        Sorted list of TIFF image paths
+    """
+    tiff_files = sorted(cache_dir.glob("*.tiff")) + sorted(cache_dir.glob("*.tif"))
+    return sorted(set(tiff_files))  # Remove duplicates and sort
 
 
 def main():
@@ -115,17 +125,19 @@ def main():
         epilog='''
 Examples:
   python manuscript_segmentation.py gospel_config.ini
-  python manuscript_segmentation.py /path/to/my_manuscript_config.ini
+  python manuscript_segmentation.py yale_ms402_config.ini
 
 Note:
-  This script requires Kraken to be installed. Make sure you're running
-  it in an environment where Kraken is available (e.g., kraken-env).
+  This script requires Kraken to be installed and processes ALL TIFF files
+  in the cache_dir specified in your config file.
+  
+  For IIIF sources: Run iiif_downloader.py first to populate cache_dir
+  For local files: Copy your TIFF files to cache_dir
+  
+  The script will create XML files in cache_dir/segmentation/ for each image.
   
   To activate kraken-env:
-    source ~/venvs/kraken-env/bin/activate
-    
-  Or if kraken-env is in your project:
-    source kraken-env/bin/activate
+    source /Users/miranda/Documents/Yale/Classes/CPSC_490/kraken-env/bin/activate
         '''
     )
     
@@ -149,40 +161,79 @@ Note:
             print("\n❌ Error: Kraken is not installed or not in PATH")
             print("\nTo install Kraken:")
             print("  1. Activate your kraken environment:")
-            print("     source kraken-env/bin/activate")
+            print("     source /Users/miranda/Documents/Yale/Classes/CPSC_490/kraken-env/bin/activate")
             print("  2. Install Kraken:")
             print("     pip install kraken")
             sys.exit(1)
         
         # Get paths from config
         paths = config.get_paths()
-        tiff_file = paths['tiff_file']
-        xml_file = paths['xml_file']
         
-        # Validate input file exists
-        if not tiff_file.exists():
-            print(f"\n❌ Error: Input TIFF file not found: {tiff_file}")
+        # Get cache directory
+        cache_dir = paths.get('cache_dir')
+        if not cache_dir:
+            print("\n❌ Error: cache_dir not specified in config file")
+            print("\nPlease specify cache_dir in the [paths] section of your config.")
             sys.exit(1)
         
-        # Check if output already exists
-        if xml_file.exists():
-            response = input(f"\n⚠️  Output file already exists: {xml_file}\n   Overwrite? (y/n): ")
-            if response.lower() != 'y':
-                print("Segmentation cancelled.")
-                sys.exit(0)
+        # Find all TIFF images in cache directory
+        image_files = find_all_downloaded_images(cache_dir)
         
-        # Run segmentation
-        success = run_segmentation(tiff_file, xml_file)
+        if not image_files:
+            print(f"\n❌ Error: No TIFF images found in cache directory: {cache_dir}")
+            print("\nFor IIIF sources: Run iiif_downloader.py first to download images.")
+            print("For local files: Copy your TIFF files to the cache directory.")
+            sys.exit(1)
         
-        if success:
-            print(f"\n✓ Segmentation complete!")
-            print(f"  Output saved to: {xml_file}")
-            print(f"\nYou can now run the rest of the pipeline:")
-            print(f"  python glyph_extraction.py {args.config}")
-            print(f"  python glyph_embedder.py {args.config}")
-            print(f"  python glyph_similarity_search.py {args.config}")
-        else:
-            print("\n❌ Segmentation failed. See errors above.")
+        print(f"\n{'='*60}")
+        print(f"Found {len(image_files)} image(s) to segment")
+        print(f"{'='*60}\n")
+        
+        # Create segmentation output directory
+        seg_dir = cache_dir / 'segmentation'
+        seg_dir.mkdir(exist_ok=True)
+        
+        # Process each image
+        successful = 0
+        failed = 0
+        
+        for i, image_path in enumerate(image_files, 1):
+            print(f"[{i}/{len(image_files)}] {image_path.name}")
+            
+            # Create output XML filename based on image filename
+            xml_filename = image_path.stem + '.xml'
+            xml_output = seg_dir / xml_filename
+            
+            # Run segmentation
+            if run_segmentation(image_path, xml_output):
+                print(f"  ✓ Saved: {xml_output.name}\n")
+                successful += 1
+            else:
+                print(f"  ✗ Failed\n")
+                failed += 1
+        
+        # Print summary
+        print(f"{'='*60}")
+        print(f"Segmentation Summary")
+        print(f"{'='*60}")
+        print(f"  Successful: {successful}/{len(image_files)}")
+        print(f"  Failed:     {failed}/{len(image_files)}")
+        print(f"  Output dir: {seg_dir}")
+        print(f"{'='*60}\n")
+        
+        if successful > 0:
+            print(f"✓ Segmentation complete!")
+            print(f"\nNext steps:")
+            if len(image_files) == 1:
+                print(f"1. Update xml_file in config to: {seg_dir / image_files[0].stem}.xml")
+                print(f"2. Run: python glyph_extraction.py {args.config}")
+            else:
+                print(f"1. Update xml_file in config to point to one of the XML files")
+                print(f"2. Or run glyph_extraction.py on each XML file separately")
+                print(f"\nExample:")
+                print(f"  python glyph_extraction.py {args.config} --xml-file {seg_dir / image_files[0].stem}.xml")
+        
+        if failed > 0:
             sys.exit(1)
     
     except FileNotFoundError as e:

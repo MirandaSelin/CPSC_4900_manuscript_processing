@@ -181,7 +181,7 @@ class GlyphExtractor:
         
         return components
     
-    def process_manuscript(self, tiff_path, xml_path, output_dir):
+    def process_manuscript(self, tiff_path, xml_path, output_dir, source_page=None, start_glyph_number=1):
         """
         Process entire manuscript: extract all glyphs and save with metadata.
         
@@ -189,12 +189,18 @@ class GlyphExtractor:
             tiff_path: Path to manuscript TIFF file
             xml_path: Path to Kraken XML output
             output_dir: Directory to save glyph images and CSV
+            source_page: Optional identifier for the source page (e.g., "page_001")
+            start_glyph_number: Starting number for glyph IDs (for multi-page processing)
         """
         # Create output directory
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
         glyph_dir = output_path / "glyphs"
         glyph_dir.mkdir(exist_ok=True)
+        
+        # Determine source identifier
+        if source_page is None:
+            source_page = Path(tiff_path).stem  # Use filename without extension
         
         # Load manuscript image
         print(f"Loading manuscript image: {tiff_path}")
@@ -209,7 +215,7 @@ class GlyphExtractor:
         
         # Process each line
         metadata = []
-        glyph_count = 0
+        glyph_count = start_glyph_number - 1  # Start from the provided number
         
         for line_idx, line_info in enumerate(lines):
             line_id = line_info['line_id']
@@ -243,10 +249,13 @@ class GlyphExtractor:
                 x_global = line_offset[0] + x_local
                 y_global = line_offset[1] + y_local
                 
-                # Store metadata
+                # Store metadata (including source page)
                 metadata.append({
                     'glyph_id': glyph_id,
                     'filename': glyph_filename,
+                    'source_page': source_page,
+                    'source_image': Path(tiff_path).name,
+                    'source_xml': Path(xml_path).name,
                     'line_id': line_id,
                     'line_index': line_idx,
                     'position_in_line': comp_idx,
@@ -259,19 +268,10 @@ class GlyphExtractor:
                     'area': component['area']
                 })
         
-        # Save metadata CSV
-        csv_path = output_path / "glyph_metadata.csv"
-        print(f"\nSaving metadata to {csv_path}")
+        # Don't save metadata CSV here for multi-page mode
+        # (it will be saved after all pages are processed)
         
-        with open(csv_path, 'w', newline='') as f:
-            if metadata:
-                writer = csv.DictWriter(f, fieldnames=metadata[0].keys())
-                writer.writeheader()
-                writer.writerows(metadata)
-        
-        print(f"\nComplete! Extracted {glyph_count} glyphs from {len(lines)} lines")
-        print(f"Glyphs saved to: {glyph_dir}")
-        print(f"Metadata saved to: {csv_path}")
+        print(f"\nExtracted {len(metadata)} glyphs from {len(lines)} lines")
         
         return metadata
 
@@ -283,8 +283,18 @@ if __name__ == "__main__":
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''
 Examples:
+  # Single-page manuscript
   python glyph_extraction.py gospel_config.ini
-  python glyph_extraction.py /path/to/my_manuscript_config.ini
+  
+  # Multi-page manuscript (IIIF)
+  python glyph_extraction.py yale_ms402_config.ini
+
+This script automatically detects whether you have:
+  - A single page (uses tiff_file and xml_file from config)
+  - Multiple pages from IIIF (processes all pages in cache_dir/segmentation/)
+
+For multi-page manuscripts, metadata will include source_page and source_image
+fields to track which page each glyph comes from.
         '''
     )
     
@@ -315,13 +325,117 @@ Examples:
             padding=extraction_params['padding']
         )
         
-        # Process manuscript
-        print("Starting glyph extraction...")
+        # Check if we're processing multiple pages (IIIF) or single page
+        if 'cache_dir' in paths and paths.get('cache_dir'):
+            cache_dir = paths['cache_dir']
+            seg_dir = cache_dir / 'segmentation'
+            
+            # Check if segmentation directory exists with XML files
+            if seg_dir.exists():
+                xml_files = sorted(seg_dir.glob("*.xml"))
+                
+                if xml_files:
+                    # Multi-page mode
+                    print(f"\n{'='*60}")
+                    print(f"Multi-page mode: Found {len(xml_files)} segmented pages")
+                    print(f"{'='*60}\n")
+                    
+                    components_dir = paths['components_dir']
+                    glyph_dir = components_dir / 'glyphs'
+                    glyph_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    # Process each page and collect metadata
+                    all_metadata = []
+                    next_glyph_number = 1  # Track glyph numbering across pages
+                    
+                    for i, xml_path in enumerate(xml_files, 1):
+                        print(f"[{i}/{len(xml_files)}] Processing {xml_path.name}")
+                        
+                        try:
+                            # Find matching TIFF image
+                            stem = xml_path.stem
+                            image_path = cache_dir / f"{stem}.tiff"
+                            if not image_path.exists():
+                                image_path = cache_dir / f"{stem}.tif"
+                            
+                            if not image_path.exists():
+                                print(f"  ✗ No matching image found for {xml_path.name}")
+                                continue
+                            
+                            # Extract page identifier
+                            page_id = xml_path.stem
+                            
+                            # Process this page with continuous numbering
+                            page_metadata = extractor.process_manuscript(
+                                tiff_path=str(image_path),
+                                xml_path=str(xml_path),
+                                output_dir=str(components_dir),
+                                source_page=page_id,
+                                start_glyph_number=next_glyph_number
+                            )
+                            
+                            all_metadata.extend(page_metadata)
+                            next_glyph_number += len(page_metadata)  # Update for next page
+                            
+                            print(f"  ✓ Extracted {len(page_metadata)} glyphs (total so far: {len(all_metadata)})\n")
+                            
+                        except Exception as e:
+                            print(f"  ✗ Error: {e}\n")
+                            continue
+                    
+                    # Save combined metadata (no renumbering needed!)
+                    csv_path = components_dir / "glyph_metadata.csv"
+                    print(f"{'='*60}")
+                    print(f"Saving combined metadata to {csv_path}")
+                    print(f"{'='*60}\n")
+                    
+                    with open(csv_path, 'w', newline='') as f:
+                        if all_metadata:
+                            writer = csv.DictWriter(f, fieldnames=all_metadata[0].keys())
+                            writer.writeheader()
+                            writer.writerows(all_metadata)
+                    
+                    print(f"\n{'='*60}")
+                    print(f"✓ Multi-page extraction complete!")
+                    print(f"{'='*60}")
+                    print(f"  Total pages:  {len(xml_files)}")
+                    print(f"  Total glyphs: {len(all_metadata)}")
+                    print(f"  Glyphs dir:   {glyph_dir}")
+                    print(f"  Metadata CSV: {csv_path}")
+                    
+                    # Show sample metadata
+                    print(f"\nFirst few glyphs:")
+                    for glyph in all_metadata[:5]:
+                        print(f"  {glyph['glyph_id']}: page={glyph['source_page']}, "
+                              f"line={glyph['line_id']}, position={glyph['position_in_line']}")
+                    
+                    print(f"\nNext steps:")
+                    print(f"  python glyph_embedder.py {args.config}")
+                    print(f"  python glyph_similarity_search.py {args.config}")
+                    
+                    import sys
+                    sys.exit(0)
+        
+        # Single-page mode (fallback)
+        print("\nStarting glyph extraction (single-page mode)...")
         metadata = extractor.process_manuscript(
             str(paths['tiff_file']),
             str(paths['xml_file']),
             str(paths['components_dir'])
         )
+        
+        # Save metadata CSV for single-page mode
+        csv_path = paths['components_dir'] / "glyph_metadata.csv"
+        print(f"\nSaving metadata to {csv_path}")
+        
+        with open(csv_path, 'w', newline='') as f:
+            if metadata:
+                writer = csv.DictWriter(f, fieldnames=metadata[0].keys())
+                writer.writeheader()
+                writer.writerows(metadata)
+        
+        print(f"Glyphs saved to: {paths['components_dir'] / 'glyphs'}")
+        print(f"Metadata saved to: {csv_path}")
         
         print("\nFirst few glyphs:")
         for i, glyph in enumerate(metadata[:5]):

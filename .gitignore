@@ -9,3 +9,5 @@ __pycache__/
 examples/*/components/
 examples/*/embeddings_output/
 examples/*/visualizations/
+examples/*/*.tiff
+old/*
