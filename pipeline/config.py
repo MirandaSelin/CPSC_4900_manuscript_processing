@@ -223,12 +223,14 @@ class PipelineConfig:
         Get similarity search parameters with defaults.
         
         Returns:
-            Dictionary with keys: query_glyph_id, top_k, generate_visualization, thumbnail_size
+            Dictionary with keys: query_glyph_id, top_k, generate_visualization, 
+                                  generate_html_report, thumbnail_size
         """
         defaults = {
             'query_glyph_id': '',
             'top_k': 10,
             'generate_visualization': True,
+            'generate_html_report': True,
             'thumbnail_size': 100
         }
         
@@ -250,11 +252,12 @@ class PipelineConfig:
             else:
                 params[key] = defaults[key]
         
-        # Get boolean parameter
-        if self.parser.has_option('search', 'generate_visualization'):
-            params['generate_visualization'] = self.parser.getboolean('search', 'generate_visualization')
-        else:
-            params['generate_visualization'] = defaults['generate_visualization']
+        # Get boolean parameters
+        for key in ['generate_visualization', 'generate_html_report']:
+            if self.parser.has_option('search', key):
+                params[key] = self.parser.getboolean('search', key)
+            else:
+                params[key] = defaults[key]
         
         return params
     

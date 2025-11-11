@@ -10,3 +10,6 @@ source /Users/miranda/Documents/Yale/Classes/CPSC_490/kraken-env/bin/activate &&
 /Users/miranda/Documents/Yale/Classes/CPSC_490/.venv/bin/python glyph_extraction.py ms402_config.ini
 /Users/miranda/Documents/Yale/Classes/CPSC_490/.venv/bin/python glyph_embedder.py ms402_config.ini
 /Users/miranda/Documents/Yale/Classes/CPSC_490/.venv/bin/python glyph_similarity_search.py ms402_config.ini
+
+# showing the HTML output
+open /Users/miranda/Documents/Yale/Classes/CPSC_490/CPSC_4900_manuscript_processing/examples/yale_ms402/visualizations/report_glyph_001371.html
