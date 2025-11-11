@@ -1,15 +1,15 @@
-From within pipeline, examples using gospel_config.ini:
+From within pipeline, examples using ms204_config.ini:
 
-# Download from iiif
+# Core Processing
 /Users/miranda/Documents/Yale/Classes/CPSC_490/.venv/bin/python iiif_downloader.py ms402_config.ini
-
-# Segmentation (uses kraken-env)
 source /Users/miranda/Documents/Yale/Classes/CPSC_490/kraken-env/bin/activate && python manuscript_segmentation.py ms402_config.ini
-
-# Other three (use main .venv)
 /Users/miranda/Documents/Yale/Classes/CPSC_490/.venv/bin/python glyph_extraction.py ms402_config.ini
 /Users/miranda/Documents/Yale/Classes/CPSC_490/.venv/bin/python glyph_embedder.py ms402_config.ini
 /Users/miranda/Documents/Yale/Classes/CPSC_490/.venv/bin/python glyph_similarity_search.py ms402_config.ini
 
-# showing the HTML output
+# showing the HTML output of searching for a specific glyph
 open /Users/miranda/Documents/Yale/Classes/CPSC_490/CPSC_4900_manuscript_processing/examples/yale_ms402/visualizations/report_glyph_001371.html
+
+# Choosing a glyph
+/Users/miranda/Documents/Yale/Classes/CPSC_490/.venv/bin/python manuscript_viewer.py ms402_config.ini
+open /Users/miranda/Documents/Yale/Classes/CPSC_490/CPSC_4900_manuscript_processing/examples/yale_ms402/visualizations/manuscript_viewer.html
