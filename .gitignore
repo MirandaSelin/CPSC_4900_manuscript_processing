@@ -6,8 +6,9 @@ __pycache__/
 *.dylib
 
 # Pipeline output directories (large generated files)
-examples/*/components/
-examples/*/embeddings_output/
-examples/*/visualizations/
+examples/*/cache
+examples/*/components
+examples/*/embeddings_output
+examples/*/visualizations
 examples/*/*.tiff
-old/*
+old
