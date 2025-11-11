@@ -1,3 +1,9 @@
-source ~/venvs/kraken-env/bin/activate
-kraken -a -i gospels.tiff segmentation.xml segment -bl
-python alto_overlay.py --alto segmentation.xml --image gospels.png --level line --out overlay.png
+From within pipeline, examples using gospel_config.ini:
+
+# Segmentation (uses kraken-env)
+source /Users/miranda/Documents/Yale/Classes/CPSC_490/kraken-env/bin/activate && python manuscript_segmentation.py gospel_config.ini
+
+# Other three (use main .venv)
+/Users/miranda/Documents/Yale/Classes/CPSC_490/.venv/bin/python glyph_extraction.py gospel_config.ini
+/Users/miranda/Documents/Yale/Classes/CPSC_490/.venv/bin/python glyph_embedder.py gospel_config.ini
+/Users/miranda/Documents/Yale/Classes/CPSC_490/.venv/bin/python glyph_similarity_search.py gospel_config.ini

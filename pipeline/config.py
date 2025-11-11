@@ -114,10 +114,11 @@ class PipelineConfig:
         Get embedding generation parameters with defaults.
         
         Returns:
-            Dictionary with keys: target_size, batch_size
+            Dictionary with keys: model, target_size, batch_size
         """
         defaults = {
-            'target_size': 224,
+            'model': 'hog',  # Options: hog, resnet50, trocr
+            'target_size': 64,  # 64 for HOG, 224 for ResNet/TrOCR
             'batch_size': 8
         }
         
@@ -125,11 +126,19 @@ class PipelineConfig:
             return defaults
         
         params = {}
-        for key, default in defaults.items():
+        
+        # Get model type (string)
+        if self.parser.has_option('embeddings', 'model'):
+            params['model'] = self.parser.get('embeddings', 'model').strip().lower()
+        else:
+            params['model'] = defaults['model']
+        
+        # Get numeric parameters
+        for key in ['target_size', 'batch_size']:
             if self.parser.has_option('embeddings', key):
                 params[key] = self.parser.getint('embeddings', key)
             else:
-                params[key] = default
+                params[key] = defaults[key]
         
         return params
     

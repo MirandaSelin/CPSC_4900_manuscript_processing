@@ -92,7 +92,10 @@ class GlyphExtractor:
     
     def preprocess_line(self, line_image):
         """
-        Preprocess line image for connected component analysis.
+        Preprocess line image using Otsu's automatic thresholding.
+        
+        Otsu's method automatically finds the optimal threshold value
+        by analyzing the histogram of the image.
         
         Returns:
             Binary image (black text on white background)
@@ -103,56 +106,22 @@ class GlyphExtractor:
         else:
             gray = line_image.copy()
         
-        # Try multiple thresholding approaches to find the best one
+        # Use Otsu's automatic threshold
+        _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         
-        # Method 1: Otsu's automatic threshold
-        _, binary_otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        
-        # Method 2: Adaptive threshold
-        binary_adaptive = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-                                                cv2.THRESH_BINARY, 11, 2)
-        
-        # Method 3: Fixed threshold (original approach)
-        _, binary_fixed = cv2.threshold(gray, self.threshold_value, 255, cv2.THRESH_BINARY)
-        
-        # Choose the best threshold based on the amount of white vs black pixels
-        # Good segmentation should have more white (background) than black (text)
-        candidates = [
-            ('otsu', binary_otsu),
-            ('adaptive', binary_adaptive), 
-            ('fixed', binary_fixed),
-            ('otsu_inv', cv2.bitwise_not(binary_otsu)),
-            ('adaptive_inv', cv2.bitwise_not(binary_adaptive)),
-            ('fixed_inv', cv2.bitwise_not(binary_fixed))
-        ]
-        
-        best_binary = None
-        best_score = -1
-        
-        for name, candidate in candidates:
-            # Score based on having reasonable amount of foreground pixels (5-50% black)
-            black_ratio = 1 - np.mean(candidate) / 255.0
-            if 0.05 <= black_ratio <= 0.5:  # 5-50% black pixels seems reasonable for text
-                # Prefer less black (cleaner background)
-                score = 1 - black_ratio
-                if score > best_score:
-                    best_score = score
-                    best_binary = candidate
-        
-        # If no candidate meets criteria, fall back to Otsu with appropriate inversion
-        if best_binary is None:
-            binary = binary_otsu
-            # If most pixels are black, invert (we want black text on white background)
-            if np.mean(binary) < 127:
-                binary = cv2.bitwise_not(binary)
-        else:
-            binary = best_binary
+        # If most pixels are black, invert (we want black text on white background)
+        if np.mean(binary) < 127:
+            binary = cv2.bitwise_not(binary)
         
         return binary
     
     def extract_components(self, binary_image):
         """
-        Extract connected components from binary image.
+        Extract connected components from binary image using mask-based cropping.
+        
+        This method creates a mask for each component to ensure only pixels
+        belonging to that specific component are saved, eliminating stray
+        pixels from neighboring letters.
         
         Returns:
             List of dicts with component info (bbox, area, image)
@@ -185,8 +154,20 @@ class GlyphExtractor:
             w_pad = min(binary_image.shape[1] - x_pad, w + 2 * self.padding)
             h_pad = min(binary_image.shape[0] - y_pad, h + 2 * self.padding)
             
-            # Extract component image
-            component_img = binary_image[y_pad:y_pad+h_pad, x_pad:x_pad+w_pad]
+            # Create mask for this specific component
+            # Mask is True only for pixels belonging to this component
+            component_mask = (labels == i).astype(np.uint8) * 255
+            
+            # Crop the mask to the padded bounding box
+            mask_crop = component_mask[y_pad:y_pad+h_pad, x_pad:x_pad+w_pad]
+            
+            # Crop the binary image to the padded bounding box
+            image_crop = binary_image[y_pad:y_pad+h_pad, x_pad:x_pad+w_pad]
+            
+            # Apply mask: keep only pixels that belong to this component
+            # Set everything else to white (255)
+            component_img = np.full_like(image_crop, 255)  # Start with all white
+            component_img[mask_crop == 255] = image_crop[mask_crop == 255]  # Copy only masked pixels
             
             components.append({
                 'bbox': (x_pad, y_pad, w_pad, h_pad),
