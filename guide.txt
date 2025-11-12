@@ -13,3 +13,6 @@ open /Users/miranda/Documents/Yale/Classes/CPSC_490/CPSC_4900_manuscript_process
 # Choosing a glyph
 /Users/miranda/Documents/Yale/Classes/CPSC_490/.venv/bin/python manuscript_viewer.py config_files/ms402_config.ini
 open /Users/miranda/Documents/Yale/Classes/CPSC_490/CPSC_4900_manuscript_processing/examples/yale_ms402/visualizations/manuscript_viewer.html
+
+# Viewing line segmentation
+python alto_overlay.py --alto segmentation.xml --image gospels.png --level line --out overlay.png

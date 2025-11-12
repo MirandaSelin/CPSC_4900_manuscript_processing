@@ -314,12 +314,8 @@ Examples:
         print("IIIF Downloader")
         print("="*60)
         
-        # Get IIIF settings from config
-        paths = config.get_paths()
-        
-        # Check if IIIF URL is configured
-        iiif_url = paths.get('iiif_url')
-        if not iiif_url:
+        # Get IIIF URL directly from config parser (don't call get_paths() which triggers download)
+        if not config.parser.has_option('paths', 'iiif_manifest') and not config.parser.has_option('paths', 'iiif_url'):
             print("\nError: No IIIF URL found in config.")
             print("Please add 'iiif_url' or 'iiif_manifest' to [paths] section.")
             print("\nExample:")
@@ -328,8 +324,15 @@ Examples:
             print("  cache_dir = ../cache")
             return
         
-        # Get settings
-        cache_dir = paths.get('cache_dir', Path('../cache'))
+        # Get IIIF URL from config without triggering download
+        iiif_url = (config.parser.get('paths', 'iiif_manifest') if config.parser.has_option('paths', 'iiif_manifest')
+                   else config.parser.get('paths', 'iiif_url'))
+        
+        # Get cache_dir
+        cache_dir = Path(config.parser.get('paths', 'cache_dir', fallback='../cache')).expanduser()
+        if not cache_dir.is_absolute():
+            cache_dir = (config.config_path.parent / cache_dir).resolve()
+        
         output_format = args.format if args.format else 'TIFF'
         
         # Get max_images from config or command line
